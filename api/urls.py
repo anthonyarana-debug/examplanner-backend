@@ -1,4 +1,5 @@
 from django.urls import path
+from .canvas_academico import NotasView, AnunciosView
 from . import views
 
 urlpatterns = [
@@ -8,6 +9,8 @@ urlpatterns = [
     path('auth/logout/',         views.LogoutView.as_view(),         name='logout'),
 
     # Canvas
+    path('canvas/notas/',    NotasView.as_view(),    name='canvas-notas'),
+    path('canvas/anuncios/', AnunciosView.as_view(), name='canvas-anuncios'),
     path('canvas/autorizar/',    views.CanvasOAuthView.as_view(),    name='canvas-autorizar'),
     path('canvas/callback/',     views.CanvasCallbackView.as_view(), name='canvas-callback'),
     path('canvas/conectar/',     views.CanvasConectarTokenView.as_view(), name='canvas-conectar'),

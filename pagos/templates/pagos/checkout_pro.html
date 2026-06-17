@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExamPlanner Pro — Pago seguro</title>
+
+  <link rel="stylesheet"
+    href="https://static.micuentaweb.pe/static/js/krypton-client/V4.0/stable/kr-payment-form.min.css">
+  <script
+    src="https://static.micuentaweb.pe/static/js/krypton-client/V4.0/stable/kr-payment-form.min.js"
+    kr-public-key="{{ public_key }}"
+    kr-post-url-success="/api/pagos/exitoso/"
+    kr-post-url-refused="/api/pagos/fallido/">
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, Roboto, sans-serif;
+      background: linear-gradient(160deg, #1565C0, #0D47A1);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #fff; border-radius: 18px; padding: 28px 24px;
+      width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
+    }
+    .logo { font-size: 40px; text-align: center; }
+    h1 { font-size: 20px; text-align: center; color: #0D47A1; margin: 8px 0 2px; }
+    .sub { text-align: center; color: #607D8B; font-size: 13px; margin-bottom: 18px; }
+    .monto {
+      text-align: center; font-size: 30px; font-weight: 800; color: #1565C0;
+      margin-bottom: 4px;
+    }
+    .orden { text-align: center; color: #90A4AE; font-size: 11px; margin-bottom: 20px; }
+    hr { border: none; border-top: 1px solid #ECEFF1; margin: 18px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">📚</div>
+    <h1>ExamPlanner Pro</h1>
+    <p class="sub">Sincronización ilimitada y alertas inteligentes</p>
+    <div class="monto">S/ {{ pago.monto_soles }}</div>
+    <div class="orden">Orden {{ pago.orden_id }}</div>
+    <hr>
+
+    <!-- Formulario embebido de Izipay -->
+    <div class="kr-embedded" kr-form-token="{{ form_token }}">
+      <div class="kr-pan"></div>
+      <div class="kr-expiry"></div>
+      <div class="kr-security-code"></div>
+      <button class="kr-payment-button"></button>
+    </div>
+  </div>
+</body>
+</html>

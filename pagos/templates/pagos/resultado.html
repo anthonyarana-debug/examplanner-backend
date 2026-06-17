@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if ok %}Pago exitoso{% else %}Pago no completado{% endif %}</title>
+  <style>
+    body {
+      margin: 0; font-family: -apple-system, Roboto, sans-serif;
+      background: {% if ok %}#E8F5E9{% else %}#FFEBEE{% endif %};
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .box { text-align: center; padding: 30px; }
+    .icon { font-size: 72px; }
+    h1 { color: {% if ok %}#2E7D32{% else %}#C62828{% endif %}; font-size: 22px; }
+    p { color: #546E7A; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">{% if ok %}✅{% else %}❌{% endif %}</div>
+    <h1>{% if ok %}¡Pago exitoso!{% else %}Pago no completado{% endif %}</h1>
+    <p>
+      {% if ok %}
+        Tu suscripción ExamPlanner Pro está activa. Ya puedes volver a la app.
+      {% else %}
+        No se pudo procesar el pago. Puedes intentarlo nuevamente desde la app.
+      {% endif %}
+    </p>
+  </div>
+</body>
+</html>

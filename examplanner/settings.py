@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'api',
+    'pagos',
 ]
 
 MIDDLEWARE = [
@@ -121,3 +122,13 @@ CANVAS_BASE_URL = os.getenv('CANVAS_BASE_URL', 'https://tecsup.instructure.com')
 CANVAS_CLIENT_ID = os.getenv('CANVAS_CLIENT_ID', '')
 CANVAS_CLIENT_SECRET = os.getenv('CANVAS_CLIENT_SECRET', '')
 CANVAS_REDIRECT_URI = os.getenv('CANVAS_REDIRECT_URI', 'http://localhost:8000/api/canvas/callback/')
+
+# Izipay Sandbox
+IZIPAY_SHOP_ID    = os.getenv('IZIPAY_SHOP_ID', '78170250')
+IZIPAY_API_KEY    = os.getenv('IZIPAY_API_KEY', 'testpassword_IkSmgnGk8aQ32o1UeeztOgPRayVRLkmHCh3DKRrjhrvHv')
+IZIPAY_PUBLIC_KEY = os.getenv('IZIPAY_PUBLIC_KEY', '78170250:testpublickey_0k6QXWZPq5364wp6jSm9ShleP49w2lXoPYVuYpJVZzq7m')
+IZIPAY_API_URL    = 'https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment'
+
+CSRF_TRUSTED_ORIGINS = ['https://api.stackpe.online', 'https://secure.micuentaweb.pe']
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+IZIPAY_HMAC_KEY = os.getenv('IZIPAY_HMAC_KEY', 'VMhd7u3EL6Titj2XfL4AEkehVQ9Vdgb5xU0m6TX1RNN1E')
