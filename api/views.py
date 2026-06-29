@@ -475,15 +475,22 @@ class ExamenListCreateView(APIView):
 def _importar_tareas_canvas(estudiante, servicio: CanvasService) -> int:
     """
     Importa tareas desde Canvas. Si ya existe una con el mismo canvas_id
-    no la duplica, solo la actualiza si cambió la fecha.
+    no la duplica, solo la actualiza. Además, si la tarea ya figura como
+    ENTREGADA o CALIFICADA en Canvas, la marca como completada en la app.
     """
+    from django.utils import timezone
+
     tareas_data = servicio.obtener_tareas_pendientes()
+    entregados = servicio.obtener_entregas()
     importadas = 0
 
     for data in tareas_data:
+        canvas_id = data['canvas_id']
+        ya_entregada = canvas_id in entregados
+
         tarea, creada = Tarea.objects.update_or_create(
             estudiante=estudiante,
-            canvas_id=data['canvas_id'],
+            canvas_id=canvas_id,
             defaults={
                 'nombre': data['nombre'],
                 'curso': data['curso'],
@@ -493,6 +500,12 @@ def _importar_tareas_canvas(estudiante, servicio: CanvasService) -> int:
                 'origen': 'canvas',
             }
         )
+
+        if ya_entregada and not tarea.completada:
+            tarea.completada = True
+            tarea.fecha_completada = timezone.now()
+            tarea.save()
+
         if creada:
             importadas += 1
 

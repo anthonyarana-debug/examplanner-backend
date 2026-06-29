@@ -2,6 +2,7 @@
 Endpoints académicos que leen datos en vivo desde Canvas:
   - Notas y promedio general
   - Anuncios de los cursos (texto limpio, sin HTML)
+  - Materiales (módulos por semana con sus recursos)
 Se apoyan en el canvas_token que el estudiante ya guardó al conectar Canvas.
 """
 import re
@@ -35,10 +36,8 @@ def _limpiar_html(texto):
     """Convierte el HTML de un anuncio en texto plano legible."""
     if not texto:
         return ''
-    # quitar bloques script/style/link completos
     texto = re.sub(r'(?is)<(script|style)\b.*?</\1>', ' ', texto)
     texto = re.sub(r'(?is)<link[^>]*>', ' ', texto)
-    # quitar el resto de etiquetas
     texto = re.sub(r'(?s)<[^>]+>', ' ', texto)
     texto = html_mod.unescape(texto)
     texto = re.sub(r'\s+', ' ', texto).strip()
@@ -66,10 +65,7 @@ def _cursos_activos(token):
 
 
 class NotasView(APIView):
-    """
-    GET /api/canvas/notas/
-    Devuelve la nota actual de cada curso y el promedio general.
-    """
+    """GET /api/canvas/notas/ — nota actual de cada curso y promedio general."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -113,10 +109,7 @@ class NotasView(APIView):
 
 
 class AnunciosView(APIView):
-    """
-    GET /api/canvas/anuncios/
-    Devuelve los anuncios recientes de todos los cursos activos (texto limpio).
-    """
+    """GET /api/canvas/anuncios/ — anuncios recientes (texto limpio)."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -159,6 +152,63 @@ class AnunciosView(APIView):
             except Exception:
                 pass
 
-        # recientes primero (los que tienen fecha), luego el resto
         anuncios.sort(key=lambda x: x['fecha'] or '', reverse=True)
         return Response({'anuncios': anuncios, 'total': len(anuncios)})
+
+
+TIPOS_UTILES = {'File', 'Page', 'ExternalUrl', 'Discussion', 'Assignment', 'Quiz'}
+
+
+class MaterialesView(APIView):
+    """GET /api/canvas/materiales/ — módulos (por semana) con sus recursos."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        est = request.user
+        if not est.canvas_conectado or not est.canvas_token:
+            return Response(
+                {'error': 'Canvas no está conectado', 'cursos': []},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token = est.canvas_token
+        cursos = _cursos_activos(token)
+        resultado = []
+
+        for c in cursos:
+            cid = c.get('id')
+            if not cid:
+                continue
+            try:
+                r = requests.get(
+                    f'{CANVAS_BASE_URL}/api/v1/courses/{cid}/modules',
+                    headers=_headers(token),
+                    params={'include[]': 'items', 'per_page': 20},
+                    timeout=15,
+                )
+                modulos_raw = r.json() if r.status_code == 200 else []
+            except Exception:
+                modulos_raw = []
+
+            modulos = []
+            for m in modulos_raw:
+                if not isinstance(m, dict):
+                    continue
+                items = []
+                for it in (m.get('items') or []):
+                    if it.get('type') in TIPOS_UTILES:
+                        items.append({
+                            'titulo': it.get('title', ''),
+                            'tipo': it.get('type'),
+                            'url': it.get('html_url') or it.get('external_url'),
+                        })
+                if items:
+                    modulos.append({'nombre': m.get('name', 'Módulo'), 'items': items})
+
+            if modulos:
+                resultado.append({
+                    'curso': _nombre_corto(c.get('name')),
+                    'modulos': modulos,
+                })
+
+        return Response({'cursos': resultado, 'total_cursos': len(resultado)})

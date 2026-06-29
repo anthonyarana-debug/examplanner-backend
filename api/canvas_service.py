@@ -1,7 +1,50 @@
+import re
 import requests
 from django.conf import settings
 from django.utils import timezone
 from datetime import datetime, timedelta
+
+
+# Palabras clave que, en un assignment normal (no quiz), indican evaluación.
+PALABRAS_EXAMEN = [
+    'examen',
+    'evaluacion',
+    'evaluación',
+    'practica calificada',
+    'práctica calificada',
+    'parcial',
+    'sustitutorio',
+]
+
+
+def _es_examen(nombre: str, is_quiz: bool, puntos) -> bool:
+    """
+    Decide si un assignment de Canvas debe tratarse como examen.
+
+    Reglas (en orden):
+      1. Si Canvas lo marca como quiz -> examen seguro.
+      2. Si vale 1 punto o menos -> NO es examen (son foros / actividades
+         sumativas de relleno que en Tecsup valen 1 pt).
+      3. Si el nombre contiene palabras fuertes de evaluación
+         (examen, evaluación, práctica calificada, PC, parcial...) -> examen.
+      4. En cualquier otro caso -> tarea.
+    """
+    if is_quiz:
+        return True
+
+    try:
+        if puntos is not None and float(puntos) <= 1:
+            return False
+    except (TypeError, ValueError):
+        pass
+
+    n = (nombre or '').lower()
+
+    # 'PC' como palabra suelta o seguida de número (PC1, PC 2, PC-S05)
+    if re.search(r'\bpc\s*\d', n) or re.search(r'\bpc\b', n):
+        return True
+
+    return any(palabra in n for palabra in PALABRAS_EXAMEN)
 
 
 class CanvasService:
@@ -22,7 +65,6 @@ class CanvasService:
     def verificar_conexion(self) -> dict:
         """
         Verifica que el token es válido y obtiene datos del usuario.
-        Retorna dict con id y nombre del usuario en Canvas.
         """
         try:
             response = requests.get(
@@ -63,16 +105,47 @@ class CanvasService:
         except Exception:
             return []
 
-    def obtener_tareas_pendientes(self) -> list:
+    def obtener_entregas(self) -> set:
         """
-        Importa todas las tareas pendientes de los próximos 30 días.
-        Devuelve lista de dicts listos para crear modelos Tarea.
+        Devuelve un set con los IDs (str) de assignments que el estudiante
+        YA entregó o tiene calificados en Canvas. Se usa para marcar como
+        completadas las tareas que ya hizo. Solo lectura.
+        """
+        entregados = set()
+        try:
+            cursos = self.obtener_cursos()
+            for curso in cursos:
+                curso_id = curso.get('id')
+                response = requests.get(
+                    f'{self.BASE_URL}/api/v1/courses/{curso_id}/students/submissions',
+                    headers=self.headers,
+                    params={'student_ids[]': 'self', 'per_page': 100},
+                    timeout=15
+                )
+                if response.status_code != 200:
+                    continue
+                for sub in response.json():
+                    if not isinstance(sub, dict):
+                        continue
+                    estado = sub.get('workflow_state')
+                    # 'submitted' = entregado, 'graded' = calificado
+                    if estado in ('submitted', 'graded') and sub.get('submitted_at'):
+                        entregados.add(str(sub.get('assignment_id')))
+        except Exception:
+            pass
+        return entregados
+
+    def _obtener_assignments_clasificados(self) -> dict:
+        """
+        Recorre los assignments próximos (30 días) y los separa en:
+          - 'tareas':   assignments normales
+          - 'examenes': assignments que son evaluación (quiz o nombre fuerte)
         """
         tareas = []
+        examenes = []
         fecha_limite = timezone.now() + timedelta(days=30)
 
         try:
-            # Primero obtenemos los cursos activos
             cursos = self.obtener_cursos()
 
             for curso in cursos:
@@ -94,6 +167,9 @@ class CanvasService:
                     continue
 
                 for assignment in response.json():
+                    if not isinstance(assignment, dict):
+                        continue
+
                     due_at = assignment.get('due_at')
                     if not due_at:
                         continue
@@ -101,34 +177,54 @@ class CanvasService:
                     fecha_entrega = datetime.fromisoformat(
                         due_at.replace('Z', '+00:00')
                     )
+                    if fecha_entrega > fecha_limite:
+                        continue
 
-                    # Solo incluir tareas en los próximos 30 días
-                    if fecha_entrega <= fecha_limite:
+                    nombre = assignment.get('name', 'Sin nombre')
+                    is_quiz = assignment.get('is_quiz_assignment', False)
+                    puntos = assignment.get('points_possible')
+
+                    if _es_examen(nombre, is_quiz, puntos):
+                        examenes.append({
+                            'canvas_id': f"a{assignment.get('id')}",
+                            'canvas_curso_id': str(curso_id),
+                            'curso': curso_nombre,
+                            'fecha': fecha_entrega,
+                            'descripcion': nombre,
+                            'origen': 'canvas',
+                        })
+                    else:
                         tareas.append({
                             'canvas_id': str(assignment.get('id')),
                             'canvas_curso_id': str(curso_id),
-                            'nombre': assignment.get('name', 'Sin nombre'),
+                            'nombre': nombre,
                             'curso': curso_nombre,
                             'fecha_limite': fecha_entrega,
                             'descripcion': assignment.get('description', ''),
                             'origen': 'canvas',
                         })
 
-        except Exception as e:
+        except Exception:
             pass
 
-        return tareas
+        return {'tareas': tareas, 'examenes': examenes}
+
+    def obtener_tareas_pendientes(self) -> list:
+        """Devuelve solo los assignments que NO son evaluaciones."""
+        return self._obtener_assignments_clasificados()['tareas']
 
     def obtener_examenes_proximos(self) -> list:
         """
-        Importa los exámenes (quizzes) de los próximos 30 días.
+        Devuelve los exámenes de los próximos 30 días, combinando:
+          1) quizzes nativos de Canvas
+          2) assignments que son evaluación (caso Tecsup)
         """
         examenes = []
         fecha_limite = timezone.now() + timedelta(days=30)
 
+        # 1) Quizzes nativos
         try:
             cursos = self.obtener_cursos()
-
             for curso in cursos:
                 curso_id = curso.get('id')
                 curso_nombre = curso.get('name', 'Sin nombre')
@@ -139,11 +235,12 @@ class CanvasService:
                     params={'per_page': 100},
                     timeout=10
                 )
-
                 if response.status_code != 200:
                     continue
 
                 for quiz in response.json():
+                    if not isinstance(quiz, dict):
+                        continue
                     due_at = quiz.get('due_at') or quiz.get('lock_at')
                     if not due_at:
                         continue
@@ -151,17 +248,21 @@ class CanvasService:
                     fecha_examen = datetime.fromisoformat(
                         due_at.replace('Z', '+00:00')
                     )
-
                     if fecha_examen <= fecha_limite:
                         examenes.append({
-                            'canvas_id': str(quiz.get('id')),
+                            'canvas_id': f"q{quiz.get('id')}",
                             'canvas_curso_id': str(curso_id),
                             'curso': curso_nombre,
                             'fecha': fecha_examen,
                             'descripcion': quiz.get('title', ''),
                             'origen': 'canvas',
                         })
+        except Exception:
+            pass
 
+        # 2) Assignments que son evaluación
+        try:
+            examenes += self._obtener_assignments_clasificados()['examenes']
         except Exception:
             pass
 
@@ -169,10 +270,6 @@ class CanvasService:
 
 
 def generar_url_oauth(state: str = 'examplanner') -> str:
-    """
-    Genera la URL de autorización OAuth2 para Canvas.
-    El usuario es redirigido aquí para autorizar el acceso.
-    """
     params = {
         'client_id': settings.CANVAS_CLIENT_ID,
         'response_type': 'code',
@@ -185,9 +282,6 @@ def generar_url_oauth(state: str = 'examplanner') -> str:
 
 
 def intercambiar_codigo_por_token(codigo: str) -> dict:
-    """
-    Intercambia el código de autorización por el access token de Canvas.
-    """
     try:
         response = requests.post(
             f'{settings.CANVAS_BASE_URL}/login/oauth2/token',

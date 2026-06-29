@@ -59,7 +59,6 @@ class Tarea(models.Model):
         ('canvas', 'Importada de Canvas'),
         ('manual', 'Registrada manualmente'),
     ]
-
     estudiante = models.ForeignKey(
         Estudiante,
         on_delete=models.CASCADE,
@@ -86,13 +85,22 @@ class Tarea(models.Model):
 
     @property
     def dias_restantes(self):
+        """
+        Días de calendario que faltan, contados en hora de Perú.
+        0 = vence hoy, 1 = mañana, etc.
+        """
         if self.completada:
             return 0
-        delta = self.fecha_limite - timezone.now()
-        return max(0, delta.days)
+        hoy = timezone.localdate()
+        fecha_local = timezone.localtime(self.fecha_limite).date()
+        return max(0, (fecha_local - hoy).days)
 
     @property
     def esta_vencida(self):
+        """
+        Vencida solo si la fecha límite (con su hora real) ya pasó.
+        Se compara el instante exacto, no el día.
+        """
         return not self.completada and timezone.now() > self.fecha_limite
 
 
@@ -104,7 +112,6 @@ class Examen(models.Model):
         ('canvas', 'Importado de Canvas'),
         ('manual', 'Registrado manualmente'),
     ]
-
     estudiante = models.ForeignKey(
         Estudiante,
         on_delete=models.CASCADE,
@@ -128,11 +135,16 @@ class Examen(models.Model):
 
     @property
     def dias_restantes(self):
-        delta = self.fecha - timezone.now()
-        return max(0, delta.days)
+        """
+        Días de calendario que faltan para el examen, en hora de Perú.
+        0 = es hoy, 1 = mañana, etc.
+        """
+        hoy = timezone.localdate()
+        fecha_local = timezone.localtime(self.fecha).date()
+        return max(0, (fecha_local - hoy).days)
 
     @property
     def proximo(self):
-        """True si el examen es en menos de 48 horas."""
+        """True si el examen es en menos de 48 horas (instante exacto)."""
         delta = self.fecha - timezone.now()
         return 0 <= delta.total_seconds() <= 172800
