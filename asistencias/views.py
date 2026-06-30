@@ -70,6 +70,8 @@ class ResumenAsistenciaView(APIView):
         cursos = {}
         for b in bloques:
             faltas = b.asistencias.filter(estado='falta').count()
+            presentes = b.asistencias.filter(estado='presente').count()
+            registradas = faltas + presentes
             dur = float(b.duracion_sesion)
             horas_totales = dur * b.total_sesiones
             horas_falta = dur * faltas
@@ -78,13 +80,22 @@ class ResumenAsistenciaView(APIView):
                 'curso': b.curso,
                 'horas_totales': 0.0,
                 'horas_falta': 0.0,
+                'presentes': 0,
+                'faltas': 0,
+                'registradas': 0,
+                'sesiones_totales': 0,
                 'bloques': [],
             })
             c['horas_totales'] += horas_totales
             c['horas_falta'] += horas_falta
+            c['presentes'] += presentes
+            c['faltas'] += faltas
+            c['registradas'] += registradas
+            c['sesiones_totales'] += b.total_sesiones
             c['bloques'].append({
                 'tipo': b.tipo,
                 'faltas': faltas,
+                'presentes': presentes,
                 'sesiones': b.total_sesiones,
                 'duracion_sesion': dur,
                 'horas_falta': round(horas_falta, 2),
@@ -104,6 +115,11 @@ class ResumenAsistenciaView(APIView):
                 'porcentaje_inasistencia': pct,
                 'riesgo': pct >= UMBRAL,
                 'horas_margen': max(margen, 0),
+                # nuevos: conteo real de sesiones registradas
+                'presentes': c['presentes'],
+                'faltas': c['faltas'],
+                'registradas': c['registradas'],
+                'sesiones_totales': c['sesiones_totales'],
                 'bloques': c['bloques'],
             })
 
